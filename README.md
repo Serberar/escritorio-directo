@@ -1,5 +1,7 @@
 # Escritorio Remoto
 
+**Español** · [English](README.en.md)
+
 Escritorio remoto para Windows: escribes el ID de un equipo y te conectas, esté en tu red o en otra. Directo, cifrado de extremo a extremo y sin servidor ni cuentas.
 
 <picture>
