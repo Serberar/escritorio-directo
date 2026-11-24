@@ -17,6 +17,27 @@ async function makePassword(pw) {
   return { salt: salt.toString('base64'), key: (await stretch(pw, salt)).toString('base64') };
 }
 
+/**
+ * Freno a las peticiones de acceso: cualquiera que sepa el ID puede llamar, asi que nadie debe poder llenar la
+ * pantalla de avisos. Tras 3 rechazos de un equipo se le ignora 30 minutos; en total, 12 peticiones cada 10 minutos.
+ */
+class AskGate {
+  constructor(now = Date.now) { this.now = now; this.asks = []; this.denied = new Map(); }
+  allowed(id) {
+    const t = this.now();
+    this.asks = this.asks.filter((at) => at > t - 10 * 60_000);
+    const d = this.denied.get(id);
+    if (d && t > d.until) this.denied.delete(id);
+    return this.asks.length < 12 && !(this.denied.get(id)?.n >= 3);
+  }
+  asked() { this.asks.push(this.now()); }
+  rejected(id) {
+    if (this.denied.size > 500) this.denied.clear();
+    this.denied.set(id, { n: (this.denied.get(id)?.n || 0) + 1, until: this.now() + 30 * 60_000 });
+  }
+  accepted(id) { this.denied.delete(id); this.asks = []; }
+}
+
 /** Tope de intentos de contrasena: 5 por equipo y 20 en total cada 10 minutos. */
 class PasswordGate {
   constructor(now = Date.now) { this.now = now; this.fails = []; }
@@ -42,6 +63,7 @@ class HostSession extends EventEmitter {
     this.perms = null;
     this.since = null;
     this.remoteAddress = channel.socket.remoteAddress;
+    this.internet = !!channel.socket.internet;
     channel.on('message', (m) => this._msg(m).catch(() => this.end('error')));
     channel.on('close', (r) => this._closed(r));
     // Quien se queda a medias sin autorizarse no retiene recursos.
@@ -71,9 +93,12 @@ class HostSession extends EventEmitter {
     const { deps, ch, peer } = this;
     if (m.t === 'ask' && !this.prompt) {
       if (!deps.allowApproval()) return ch.send({ t: 'denied', reason: 'approval_disabled' });
+      if (deps.asks && !deps.asks.allowed(peer.id)) return ch.send({ t: 'denied', reason: 'busy' });
+      deps.asks?.asked();
       this.prompt = deps.askApproval(this);
       const perms = await this.prompt.result;
       this.prompt = null;
+      if (!perms && !this.authorized) deps.asks?.rejected(peer.id); else deps.asks?.accepted(peer.id);
       if (ch.closed || this.authorized) return;
       if (!perms) { deps.audit('rejected', { peer: peer.id, name: peer.name }); return this.end('rejected'); }
       return this._grant(perms, 'approval');
@@ -111,7 +136,7 @@ class HostSession extends EventEmitter {
     this.since = Date.now();
     this.files = new FileTransfers(this.ch, { accept: () => this.perms.files, dir: this.deps.downloadsDir });
     this.files.on('update', (u) => this.emit('file', u));
-    this.deps.audit('session_start', { peer: this.peer.id, name: this.peer.name, ip: this.remoteAddress, method, perms: this.perms });
+    this.deps.audit('session_start', { peer: this.peer.id, name: this.peer.name, ip: this.remoteAddress, internet: this.internet || undefined, method, perms: this.perms });
     this.ch.send({ t: 'granted', perms: this.perms, screens: this.deps.screens(), hostProof });
     this.emit('granted');
   }
@@ -141,9 +166,9 @@ class HostSession extends EventEmitter {
 
 /** Escucha conexiones entrantes. */
 class HostServer extends EventEmitter {
-  constructor({ identity, companyKey, name, deps }) {
+  constructor({ identity, netKey, name, deps }) {
     super();
-    Object.assign(this, { identity, companyKey, name, deps });
+    Object.assign(this, { identity, netKey, name, deps });
     this.sessions = new Map();
     this.pending = new Set(); // saludos a medias
     this.hits = new Map();
@@ -160,6 +185,8 @@ class HostServer extends EventEmitter {
       });
     });
   }
+  /** Conexion que llega por otra via (internet). */
+  accept(sock) { return this._conn(sock); }
   async _conn(sock) {
     sock.on('error', () => {});
     const ip = String(sock.remoteAddress || '?'), now = Date.now();
@@ -179,7 +206,7 @@ class HostServer extends EventEmitter {
     this.pending.add(entry);
     let ch;
     try {
-      ch = await SecureChannel.handshake(sock, { role: 'server', identity: this.identity, companyKey: this.companyKey, name: this.name });
+      ch = await SecureChannel.handshake(sock, { role: 'server', identity: this.identity, netKey: this.netKey, name: this.name });
     } catch (err) {
       // Como mucho una linea por minuto y direccion, para que nadie pueda llenar el registro.
       if (err.stage === 'auth' && !(this.failed.get(ip) > now - 60_000)) {
@@ -207,6 +234,30 @@ class HostServer extends EventEmitter {
   }
 }
 
+const CANCELLED = () => new Error('cancelled');
+function dialTcp({ host, port }, signal) {
+  return new Promise((res, rej) => {
+    if (signal.aborted) return rej(CANCELLED());
+    const s = net.connect({ host, port });
+    const fail = (why) => { clearTimeout(t); signal.removeEventListener('abort', abort); s.destroy(); rej(new Error(why)); };
+    const abort = () => fail('cancelled');
+    const t = setTimeout(() => fail('connect_timeout'), 8000);
+    signal.addEventListener('abort', abort);
+    s.once('connect', () => { clearTimeout(t); signal.removeEventListener('abort', abort); s.removeAllListeners('error'); res(s); });
+    s.once('error', (e) => fail(e.code || 'connect_error'));
+  });
+}
+/** Por internet, dejando ventaja a la red local si el equipo tambien puede estar ahi. */
+async function dialWan({ wan, id, delay = 0 }, signal) {
+  if (delay) {
+    await new Promise((res, rej) => {
+      const t = setTimeout(res, delay);
+      signal.addEventListener('abort', () => { clearTimeout(t); rej(CANCELLED()); }, { once: true });
+    });
+  }
+  return wan.connect(id, { signal });
+}
+
 /** Sesion en el equipo que controla. */
 class ViewerSession extends EventEmitter {
   constructor(channel, { downloadsDir, acceptFile }) {
@@ -220,15 +271,29 @@ class ViewerSession extends EventEmitter {
     channel.on('binary', (type, buf) => { if (type === T_VIDEO && this.granted) this.emit('frame', buf); });
     channel.on('close', (r) => this.emit('close', this.endReason || r));
   }
-  static async connect({ host, port, identity, companyKey, name, expectId, ...opts }) {
-    const sock = await new Promise((res, rej) => {
-      const s = net.connect({ host, port });
-      const t = setTimeout(() => { s.destroy(); rej(new Error('connect_timeout')); }, 8000);
-      s.once('connect', () => { clearTimeout(t); s.removeAllListeners('error'); res(s); });
-      s.once('error', (e) => { clearTimeout(t); rej(new Error(e.code || 'connect_error')); });
-    });
-    const ch = await SecureChannel.handshake(sock, { role: 'client', identity, companyKey, name, expectId });
-    return new ViewerSession(ch, opts);
+  /**
+   * Conecta por la via que antes lo consiga. routes: [{ host, port } | { wan, id, delay }].
+   * Con expectId, cada via comprueba que responde ese equipo; la que pierde se cierra.
+   */
+  static async connect({ routes, host, port, identity, netKey, name, expectId, expectPub, ...opts }) {
+    const list = routes || [{ host, port }];
+    const stop = new AbortController();
+    let winner = null;
+    const attempt = async (r) => {
+      const sock = r.wan ? await dialWan(r, stop.signal) : await dialTcp(r, stop.signal);
+      const ch = await SecureChannel.handshake(sock, { role: 'client', identity, netKey, name, expectId, expectPub });
+      if (winner) { ch.destroy('replaced'); throw new Error('replaced'); }
+      winner = ch;
+      return ch;
+    };
+    try {
+      const ch = await Promise.any(list.map(attempt));
+      return new ViewerSession(ch, opts);
+    } catch (e) {
+      // Se explica el fallo mas util: un problema de identidad antes que uno de red.
+      const all = (e.errors || [e]).map((x) => x.message);
+      throw new Error(all.find((m) => ['bad_protocol', 'identity_mismatch', 'bad_identity'].includes(m)) || all.find((m) => m.startsWith('wan_')) || all[0]);
+    } finally { stop.abort(); }
   }
   start() {
     if (this.ch.closed) return void setImmediate(() => this.emit('close', 'closed'));
@@ -275,4 +340,14 @@ class ViewerSession extends EventEmitter {
   }
 }
 
-module.exports = { HostServer, HostSession, ViewerSession, PasswordGate, makePassword, MAX_TEXT };
+/** Motivo por el que una contrasena de acceso no vale, o null. El equipo es accesible desde internet. */
+function weakPassword(pw) {
+  if (pw.length < 8) return 'Usa al menos 8 caracteres.';
+  const low = pw.toLowerCase();
+  const line = '0123456789 9876543210 abcdefghijklmnopqrstuvwxyz qwertyuiop asdfghjkl zxcvbnm';
+  if (new Set(low).size < 4 || line.includes(low) || /^(.{1,4})\1+$/.test(low) || /^\d+$/.test(low)) return 'Es demasiado fácil: mezcla letras y números, sin repeticiones ni secuencias.';
+  if (/(contrase|password|12345|qwerty|administrador)/.test(low) && pw.length < 14) return 'Es demasiado conocida. Usa otra.';
+  return null;
+}
+
+module.exports = { HostServer, HostSession, ViewerSession, PasswordGate, AskGate, makePassword, weakPassword, MAX_TEXT };

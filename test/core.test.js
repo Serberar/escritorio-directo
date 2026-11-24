@@ -7,14 +7,14 @@ const net = require('node:net');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { once } = require('node:events');
-const { createIdentity, loadIdentity, deriveCompanyKey, SecureChannel } = require('../src/channel');
+const { createIdentity, loadIdentity, deriveNetKey, SecureChannel } = require('../src/channel');
 const { HostServer, ViewerSession, PasswordGate, makePassword } = require('../src/sessions');
 const { safeName } = require('../src/files');
 const { seal, open } = require('../src/discovery');
 const { Injector } = require('../src/input-win');
 
-const KEY = deriveCompanyKey('clave-empresa-de-prueba');
-const OTHER = deriveCompanyKey('otra-clave-distinta-123');
+const KEY = deriveNetKey('clave-empresa-de-prueba');
+const OTHER = deriveNetKey('otra-clave-distinta-123');
 
 async function setup(t, over = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rd-'));
@@ -27,11 +27,11 @@ async function setup(t, over = {}) {
     injector: { handle: (m) => inputs.push(m), release() {} }, screens: () => [{ id: '1', label: 'P1' }],
     downloadsDir: () => path.join(dir, 'host'), audit: (e, d) => log.push({ e, ...d }), ...over,
   };
-  const srv = new HostServer({ identity: hostId, companyKey: KEY, name: 'Host', deps });
+  const srv = new HostServer({ identity: hostId, netKey: KEY, name: 'Host', deps });
   const port = await srv.listen(0, '127.0.0.1');
   t.after(async () => { await srv.close(); fs.rmSync(dir, { recursive: true, force: true }); });
   const connect = (o = {}) => ViewerSession.connect({
-    host: '127.0.0.1', port, identity: viewId, companyKey: KEY, name: 'Visor', expectId: hostId.id,
+    host: '127.0.0.1', port, identity: viewId, netKey: KEY, name: 'Visor', expectId: hostId.id,
     downloadsDir: () => path.join(dir, 'viewer'), acceptFile: () => true, ...o,
   });
   return { srv, dir, log, inputs, hostId, viewId, deps, port, connect };
@@ -97,7 +97,7 @@ test('contrasena: correcta, incorrecta y bloqueo', async (t) => {
 
 test('clave de empresa distinta no conecta', async (t) => {
   const c = await setup(t);
-  await assert.rejects(c.connect({ companyKey: OTHER }), /wrong_company_key/);
+  await assert.rejects(c.connect({ netKey: OTHER }), /bad_protocol/);
   assert.equal(c.srv.sessions.size, 0);
 });
 

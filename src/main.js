@@ -1,12 +1,12 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, safeStorage, screen, desktopCapturer, clipboard, dialog, Tray, Menu, nativeImage, shell, session } = require('electron');
+const { app, BrowserWindow, ipcMain, safeStorage, screen, desktopCapturer, clipboard, dialog, powerMonitor, Tray, Menu, nativeImage, shell, session } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
-const crypto = require('node:crypto');
-const { clearCryptoErrors, createIdentity, loadIdentity, deriveCompanyKey, cleanName } = require('./channel');
-const { HostServer, ViewerSession, PasswordGate, makePassword, MAX_TEXT } = require('./sessions');
+const { clearCryptoErrors, createIdentity, loadIdentity, deriveNetKey, cleanName } = require('./channel');
+const { HostServer, ViewerSession, PasswordGate, AskGate, makePassword, weakPassword, MAX_TEXT } = require('./sessions');
 const { Discovery } = require('./discovery');
+const { Wan } = require('./wan');
 const { Config } = require('./config');
 const { RotatingFile } = require('./log');
 
@@ -19,7 +19,7 @@ app.setAppUserModelId(brand.appId);
 const PORT = (dev && Number(process.env.RD_PORT)) || brand.port || 47600;
 const UDP = (dev && Number(process.env.RD_UDP)) || brand.discoveryPort || 47601;
 
-let cfg, identity, injector, server, discovery, home, panel, tray;
+let cfg, identity, injector, server, discovery, wan, home, panel, tray;
 let quitting = false, screens = [], lastClip = '', panelKey = '', panelReady = false, panelBeat = 0, netChain = Promise.resolve();
 const problems = new Map(); // origen -> texto
 const crashes = [];
@@ -27,13 +27,13 @@ const log = new RotatingFile(path.join(app.getPath('userData'), 'app.log'), 1024
 const note = (what, e) => log.append(`${new Date().toISOString()} ${what}: ${e?.stack || e?.message || e || ''}`);
 process.on('unhandledRejection', (e) => note('rechazo sin capturar', e));
 process.on('uncaughtException', (e) => fatal(e));
-const gate = new PasswordGate();
+const gate = new PasswordGate(), askGate = new AskGate();
 const asks = new Map();    // sid -> resolver
 const viewers = new Map(); // webContents.id -> { win, session, target }
 
 const iconPath = path.join(ROOT, 'branding', 'icon.png');
 const downloadsDir = () => path.join(app.getPath('downloads'), brand.appName.replace(/[<>:"/\\|?*]/g, '_'));
-const companyKey = () => { const k = cfg.getSecret('companyKey'); return k ? Buffer.from(k, 'base64') : null; };
+const netKey = deriveNetKey(brand.appId);
 
 if (!app.requestSingleInstanceLock()) app.quit();
 else app.whenReady().then(main).catch((e) => { note('no arranca', e); dialog.showErrorBox(brand.appName, 'El programa no puede arrancar.\n\n' + String(e.message || e)); app.exit(1); });
@@ -58,6 +58,7 @@ function shutdown() {
   server?.close();
   for (const v of viewers.values()) v.session?.end();
   discovery?.stop();
+  wan?.stop();
   tray?.destroy();
   setTimeout(() => app.exit(0), 3000);
 }
@@ -65,7 +66,7 @@ function shutdown() {
 // ---------------------------------------------------------------- arranque
 async function main() {
   cfg = new Config(app.getPath('userData'), safeStorage, {
-    settings: { name: os.hostname(), allowIncoming: true, allowApproval: true, autostart: false, unattended: { control: true, clipboard: true, files: true } },
+    settings: { name: os.hostname(), allowIncoming: true, internet: true, allowApproval: true, autostart: false, unattended: { control: true, clipboard: true, files: true } },
   });
   // Sin cifrado disponible no se toca nada: se perderian la identidad y las claves.
   if (!(await safeStorage.isAsyncEncryptionAvailable())) throw new Error('Windows no permite usar el cifrado de esta cuenta. Cierra sesión y vuelve a entrar.');
@@ -77,13 +78,15 @@ async function main() {
   if (cfg.lost.length) {
     if (!clearCryptoErrors()) throw new Error('El cifrado de Windows no responde. Reinicia el equipo.');
     cfg.audit('secret_lost', { msg: cfg.lost.join(', ') });
-    problems.set('secrets', 'Windows no pudo abrir las claves guardadas (pasa al restablecer la contraseña de Windows). Vuelve a poner la clave de empresa y la contraseña. Si cambió el ID de este equipo, avisa a quien lo use.');
+    problems.set('secrets', 'Windows no pudo abrir las claves guardadas (pasa al restablecer la contraseña de Windows). Vuelve a poner la contraseña. Si cambió el ID de este equipo, avisa a quien lo use.');
   }
   try { identity = loadIdentity(cfg.getSecret('identity')); } catch {
     const fresh = createIdentity();
     await cfg.setSecret('identity', fresh);
     identity = loadIdentity(fresh);
   }
+  // Hasta la 0.2 habia una clave de empresa y los ID se calculaban de otra forma: los contactos ya no valen.
+  if (cfg.getSecret('companyKey')) { await cfg.setSecret('companyKey', null); cfg.data.contacts = {}; cfg.save(); }
   checkSave();
   try { injector = new (require('./input-win').Injector)(); } catch (e) {
     injector = { handle() {}, release() {} };
@@ -118,6 +121,7 @@ async function main() {
   app.on('child-process-gone', (_e, d) => note('proceso auxiliar caido', `${d.type} ${d.reason}`));
   setInterval(watchPanel, 2000);
   await startNetwork();
+  powerMonitor.on('resume', () => startNetwork()); // tras suspender, la red suele ser otra
   setInterval(pollClipboard, 700);
 }
 
@@ -197,23 +201,30 @@ async function applyNetwork() {
   if (server) { const old = server; server = null; await old.close(); }
   discovery?.stop();
   discovery = null;
-  const key = companyKey();
-  if (!key) return pushHome();
+  if (wan) { const old = wan; wan = null; await old.stop(); }
   const s = cfg.data.settings, name = cleanName(s.name);
   problems.delete('net');
   problems.delete('disc');
   if (s.allowIncoming) {
-    const srv = new HostServer({ identity, companyKey: key, name, deps: hostDeps() });
+    const srv = new HostServer({ identity, netKey, name, deps: hostDeps() });
     srv.on('session', onHostSession);
     srv.on('change', pushPanel);
     try { await srv.listen(PORT); server = srv; } catch (e) {
       problems.set('net', e.code === 'EADDRINUSE' ? `El puerto ${PORT} está ocupado por otro programa o por otro usuario de Windows con este programa abierto. Este equipo no recibe conexiones.` : 'No se puede escuchar: ' + e.code);
     }
   }
-  discovery = new Discovery({ companyKey: key, id: identity.id, name, port: PORT, udpPort: UDP, silent: !server });
+  discovery = new Discovery({ netKey, id: identity.id, name, port: PORT, udpPort: UDP, silent: !server });
   discovery.on('change', pushHome);
   discovery.on('problem', (c) => { problems.set('disc', `El descubrimiento en red no funciona (${c}). Puedes conectar por IP.`); pushHome(); });
   discovery.start();
+  if (s.internet) {
+    const w = wan = new Wan({ netKey, id: identity.id, listen: !!server });
+    let last = '';
+    w.on('connection', (sock) => { if (wan === w && server) server.accept(sock); else sock.destroy(); });
+    w.on('change', pushHome);
+    w.on('problem', (e) => { const m = e?.message || String(e); if (m !== last) { last = m; note('internet', m); } });
+    w.start();
+  }
   pushHome();
 }
 
@@ -239,7 +250,7 @@ function hostDeps() {
     password: () => { const p = cfg.getSecret('password'); return p ? JSON.parse(p) : null; },
     allowApproval: () => cfg.data.settings.allowApproval,
     unattendedPerms: () => cfg.data.settings.unattended,
-    gate, injector, downloadsDir, screens: publicScreens,
+    gate, asks: askGate, injector, downloadsDir, screens: publicScreens,
     audit: (e, d) => { cfg.audit(e, d); pushHome(); },
     askApproval: (s) => {
       let done;
@@ -286,7 +297,7 @@ function startCapture(s) {
 function pushPanel() {
   if (!panel || panel.isDestroyed()) return;
   const list = [...(server?.sessions.values() ?? [])].filter((s) => s.authorized || asks.has(s.sid))
-    .map((s) => ({ sid: s.sid, id: s.peer.id, name: s.peer.name, ip: s.remoteAddress, active: s.authorized, perms: s.perms, since: s.since }));
+    .map((s) => ({ sid: s.sid, id: s.peer.id, name: s.peer.name, ip: s.remoteAddress, internet: s.internet, active: s.authorized, perms: s.perms, since: s.since }));
   toPanel('panel:state', { list, brand });
   if (!list.length) { panelKey = ''; panel.hide(); return; }
   const key = list.map((x) => x.sid + x.active).join();
@@ -338,13 +349,17 @@ function pollClipboard() {
 // ---------------------------------------------------------------- equipo que controla
 const REASONS = {
   rejected: 'La persona al otro lado rechazó la conexión o no respondió.', host_closed: 'El equipo remoto cerró la sesión.', auth_timeout: 'Se agotó el tiempo de espera.',
-  wrong_company_key: 'La clave de empresa no coincide con la del otro equipo.', identity_mismatch: 'El equipo que respondió no es el que esperabas. Conexión cancelada por seguridad.',
+  bad_protocol: 'El otro equipo usa otra versión del programa. Actualiza los dos.', identity_mismatch: 'El equipo que respondió no es el que esperabas. Conexión cancelada por seguridad.',
   host_not_verified: 'El equipo remoto no pudo demostrar que conoce la contraseña.', connect_timeout: 'El equipo no responde. Comprueba la red y el firewall.',
   ECONNREFUSED: 'El equipo no acepta conexiones (programa cerrado o conexiones desactivadas).', ENOTFOUND: 'No se encuentra ese equipo.',
   EHOSTUNREACH: 'No hay ruta hasta ese equipo.', timeout: 'Se perdió la conexión.', closed: 'Se cerró la conexión.', ECONNRESET: 'Se cerró la conexión.', ETIMEDOUT: 'El equipo no responde. Comprueba la red y el firewall.', ENETUNREACH: 'No hay red hasta ese equipo.',
   panel_lost: 'El equipo remoto cortó la sesión por seguridad: su ventana de aviso dejó de funcionar.', not_ready: 'El equipo remoto está arrancando. Prueba en unos segundos.', replaced: 'Se abrió otra conexión desde este equipo.', remote_closed: 'La sesión terminó.',
-  no_route: 'Ese ID no está visible en la red. Prueba con su dirección IP.', bad_target: 'Escribe un ID de 9 cifras o una dirección IP.',
-  no_key: 'Falta la clave de empresa.', self: 'Ese es este mismo equipo.', handshake_timeout: 'El otro equipo no completó la conexión segura.',
+  no_route: 'Ese ID no está visible en la red y la conexión por internet está desactivada. Actívala en Ajustes o prueba con su dirección IP.',
+  wan_not_found: 'Ese equipo no está en línea. Comprueba el ID y que tiene el programa abierto y actualizado.',
+  wan_blocked: 'El equipo está en línea, pero las dos redes no dejan abrir la conexión directa. Prueba desde otra red o con una VPN.',
+  wan_unreachable: 'Este equipo no puede usar la conexión por internet: no hay internet o la red bloquea UDP.',
+  wan_timeout: 'El equipo no responde por internet.', wan_failed: 'No se pudo conectar por internet.', bad_target: 'Escribe un ID de 9 cifras o una dirección IP.',
+  self: 'Ese es este mismo equipo.', handshake_timeout: 'El otro equipo no completó la conexión segura.',
 };
 const explain = (r) => REASONS[r] || 'Conexión terminada (' + r + ').';
 
@@ -353,13 +368,18 @@ function resolveTarget(text) {
   const digits = t.replace(/[\s-]/g, '');
   if (/^\d{9}$/.test(digits)) {
     if (digits === identity.id) throw new Error('self');
-    const p = discovery?.peers.get(digits) || cfg.data.contacts[digits];
-    if (!p?.host) throw new Error('no_route');
-    return { host: p.host, port: p.port || PORT, expectId: digits };
+    // Todas las vias a la vez; si el equipo se ve en la red local, internet espera un poco.
+    const near = discovery?.peers.get(digits), known = cfg.data.contacts[digits], routes = [];
+    for (const p of [near, known]) {
+      if (p?.host && !routes.some((r) => r.host === p.host && r.port === (p.port || PORT))) routes.push({ host: p.host, port: p.port || PORT });
+    }
+    if (wan) routes.push({ wan, id: digits, delay: near ? 2500 : 0 });
+    if (!routes.length) throw new Error('no_route');
+    return { routes, expectId: digits, expectPub: known?.pub };
   }
   const m = t.match(/^([a-zA-Z0-9][\w.-]*)(?::(\d{1,5}))?$/);
   if (!m || Number(m[2]) > 65535) throw new Error('bad_target');
-  return { host: m[1], port: Number(m[2]) || PORT };
+  return { routes: [{ host: m[1], port: Number(m[2]) || PORT }] };
 }
 function openViewer(target) {
   const w = win('viewer.html', { width: 1200, height: 780, minWidth: 480, minHeight: 360 });
@@ -382,13 +402,11 @@ async function connectViewer(v) {
   const prev = v.session;
   v.session = null;
   prev?.end();
-  tell('status', { text: 'Conectando...' });
+  tell('status', { text: 'Conectando... Por internet puede tardar unos segundos.' });
   let s;
   try {
-    const key = companyKey();
-    if (!key) throw new Error('no_key');
     s = await ViewerSession.connect({
-      ...resolveTarget(v.target), identity, companyKey: key, name: cleanName(cfg.data.settings.name), downloadsDir,
+      ...resolveTarget(v.target), identity, netKey, name: cleanName(cfg.data.settings.name), downloadsDir,
       acceptFile: async (f) => {
         if (v.win.isDestroyed()) return false;
         const r = await dialog.showMessageBox(v.win, { type: 'question', buttons: ['Guardar', 'Rechazar'], defaultId: 0, cancelId: 1, message: `${s.peer.name} quiere enviarte un archivo`, detail: `${f.name}\n${(f.size / 1048576).toFixed(2)} MB` });
@@ -401,7 +419,7 @@ async function connectViewer(v) {
   s.on('welcome', (m) => {
     v.win.setTitle(`${s.peer.name} (${s.peer.id}) - ${brand.appName}`);
     const sock = s.ch.socket;
-    cfg.data.contacts[s.peer.id] = { ...cfg.data.contacts[s.peer.id], id: s.peer.id, name: s.peer.name, ...(sock.remoteAddress && { host: sock.remoteAddress.replace(/^::ffff:/, ''), port: sock.remotePort }), last: Date.now() };
+    cfg.data.contacts[s.peer.id] = { ...cfg.data.contacts[s.peer.id], id: s.peer.id, name: s.peer.name, pub: s.peer.pub, ...(sock.remoteAddress && !sock.internet && { host: sock.remoteAddress.replace(/^::ffff:/, ''), port: sock.remotePort }), last: Date.now() };
     cfg.save(); // si falla se avisa, pero la conexion sigue
     checkSave();
     pushHome();
@@ -440,8 +458,8 @@ function homeState() {
   for (const p of discovery?.peers.values() ?? []) peers.set(p.id, { ...peers.get(p.id), id: p.id, name: cfg.data.contacts[p.id]?.alias || p.name, host: p.host, online: true, skew: p.skew });
   const ips = Object.values(os.networkInterfaces()).flat().filter((i) => i.family === 'IPv4' && !i.internal).map((i) => i.address);
   return {
-    brand, version: app.getVersion(), configured: !!companyKey(), id: identity.id, ips, port: PORT, problem: [...problems.values()].join(' ') || null,
-    settings: cfg.data.settings, hasPassword: !!cfg.getSecret('password'), listening: !!server,
+    brand, version: app.getVersion(), id: identity.id, ips, port: PORT, problem: [...problems.values()].join(' ') || null,
+    settings: cfg.data.settings, hasPassword: !!cfg.getSecret('password'), listening: !!server, internet: wan ? wan.state : 'off',
     peers: [...peers.values()].sort((a, b) => b.online - a.online || a.name.localeCompare(b.name)), audit: cfg.readAudit(60),
   };
 }
@@ -453,19 +471,10 @@ ipcMain.handle('home:connect', fromHome((t) => {
   openViewer(String(t));
   return null;
 }));
-ipcMain.handle('home:genkey', fromHome(() => crypto.randomBytes(20).toString('hex').toUpperCase().match(/.{5}/g).join('-')));
-ipcMain.handle('home:setup', fromHome(async (key) => {
-  key = String(key ?? '').trim();
-  if (key.length < 16) return 'La clave de empresa necesita al menos 16 caracteres.';
-  problems.delete('secrets');
-  await cfg.setSecret('companyKey', deriveCompanyKey(key).toString('base64'));
-  checkSave();
-  await startNetwork();
-  return null;
-}));
 ipcMain.handle('home:password', fromHome(async (pw) => {
   if (!pw) { await cfg.setSecret('password', null); checkSave(); pushHome(); return cfg.saveError ? 'No se pudo guardar.' : null; }
-  if (String(pw).length < 8) return 'Usa al menos 8 caracteres.';
+  const weak = weakPassword(String(pw));
+  if (weak) return weak;
   await cfg.setSecret('password', JSON.stringify(await makePassword(String(pw))));
   checkSave();
   pushHome();
@@ -474,13 +483,13 @@ ipcMain.handle('home:password', fromHome(async (pw) => {
 ipcMain.handle('home:settings', fromHome(async (s) => {
   const cur = cfg.data.settings;
   cfg.data.settings = {
-    name: cleanName(s.name), allowIncoming: !!s.allowIncoming, allowApproval: !!s.allowApproval, autostart: !!s.autostart,
+    name: cleanName(s.name), allowIncoming: !!s.allowIncoming, internet: !!s.internet, allowApproval: !!s.allowApproval, autostart: !!s.autostart,
     unattended: { control: !!s.unattended?.control, clipboard: !!s.unattended?.clipboard, files: !!s.unattended?.files },
   };
   cfg.save();
   checkSave();
   if (!dev && cur.autostart !== cfg.data.settings.autostart) app.setLoginItemSettings({ openAtLogin: cfg.data.settings.autostart, args: ['--hidden'] });
-  if (cur.name !== cfg.data.settings.name || cur.allowIncoming !== cfg.data.settings.allowIncoming) await startNetwork(); else pushHome();
+  if (cur.name !== cfg.data.settings.name || cur.internet !== cfg.data.settings.internet || cur.allowIncoming !== cfg.data.settings.allowIncoming) await startNetwork(); else pushHome();
   return null;
 }));
 ipcMain.handle('home:alias', fromHome((id, alias) => { const c = cfg.data.contacts[id]; if (c) { c.alias = alias ? cleanName(alias) : undefined; cfg.save(); pushHome(); } }));

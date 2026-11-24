@@ -3,37 +3,27 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'">
 <link rel="stylesheet" href="style.css"><title></title></head>
 <body class="home">
-<div id="setup" class="center" hidden>
-  <form id="sform" class="card narrow">
-    <img class="logo" alt="">
-    <h1>Primer uso</h1><p id="sproblem" class="err" role="alert"></p>
-    <p>Escribe la clave de empresa. Debe ser la misma en todos los equipos: sin ella nadie puede conectarse.</p>
-    <input id="key" autocomplete="off" spellcheck="false" placeholder="Clave de empresa" aria-label="Clave de empresa">
-    <p id="keynote" class="note" hidden>Copia esta clave y guárdala en un lugar seguro antes de continuar. La necesitarás en los demás equipos.</p>
-    <p id="serr" class="err" role="alert"></p>
-    <div class="row"><button class="primary">Continuar</button><button type="button" id="gen">Generar clave nueva</button></div>
-  </form>
-</div>
-<div id="app" hidden>
+<div id="app">
   <aside>
     <img class="logo" alt="">
-    <div class="me"><small>Tu ID</small><div id="myid" class="id"></div><div id="myname"></div><small id="myip"></small><span id="state" class="pill"></span></div>
+    <div class="me"><small>Tu ID</small><div id="myid" class="id"></div><div id="myname"></div><small id="myip"></small><span id="state" class="pill"></span><span id="net" class="pill"></span></div>
     <nav><button data-tab="t-home" aria-current="true">Equipos</button><button data-tab="t-set">Ajustes</button><button data-tab="t-log">Registro</button></nav>
     <small id="ver" class="muted"></small>
   </aside>
   <main>
     <p id="problem" class="err banner" role="alert" hidden></p>
     <section class="tab" id="t-home">
-      <form id="cform" class="connect"><input id="target" placeholder="ID o dirección IP del equipo" aria-label="ID o dirección IP"><button class="primary">Conectar</button></form>
+      <form id="cform" class="connect"><input id="target" placeholder="ID del equipo" aria-label="ID o dirección IP"><button class="primary">Conectar</button></form>
       <p id="cerr" class="err" role="alert"></p>
-      <div class="head"><h2>Equipos de la oficina</h2><input id="filter" placeholder="Buscar" aria-label="Buscar equipo"></div>
+      <div class="head"><h2>Equipos</h2><input id="filter" placeholder="Buscar" aria-label="Buscar equipo"></div>
       <ul id="peers"></ul>
-      <p id="nopeers" class="muted">Todavía no hay equipos. Los que tengan el programa abierto en tu red aparecerán aquí solos.</p>
+      <p id="nopeers" class="muted">Todavía no hay equipos. Los de tu red aparecen aquí solos. A uno de otra oficina o de casa, conéctate escribiendo su ID.</p>
     </section>
     <section class="tab" id="t-set" hidden>
       <form id="setform" class="card"><h2>Este equipo</h2>
         <label>Nombre<input id="s-name" maxlength="64"></label>
         <label class="chk"><input type="checkbox" id="s-allowIncoming"> Permitir que se conecten a este equipo</label>
+        <label class="chk"><input type="checkbox" id="s-internet"> Conexión por internet: usar el ID desde cualquier red</label>
         <label class="chk"><input type="checkbox" id="s-allowApproval"> Preguntar en pantalla cuando alguien se conecte sin contraseña</label>
         <label class="chk"><input type="checkbox" id="s-autostart"> Iniciar con Windows</label>
         <h3>Permisos al entrar con contraseña</h3>
@@ -48,8 +38,6 @@
         <p id="pwerr" role="status"></p>
         <div class="row"><button class="primary">Guardar contraseña</button><button type="button" id="delpw">Quitar contraseña</button></div>
       </form>
-      <form id="rekey" class="card"><h2>Clave de empresa</h2><p class="muted">Si la cambias aquí, cámbiala también en los demás equipos.</p>
-        <label>Clave nueva<input type="password" id="newkey" autocomplete="off"></label><p id="rkerr" role="status"></p><div class="row"><button>Cambiar clave</button></div></form>
     </section>
     <section class="tab" id="t-log" hidden><div class="head"><h2>Registro de este equipo</h2><button id="openlog">Abrir carpeta de registros</button></div><div class="tw"><table><thead><tr><th>Fecha</th><th>Evento</th><th>Detalle</th></tr></thead><tbody id="audit"></tbody></table></div></section>
   </main>

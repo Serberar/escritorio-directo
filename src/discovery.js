@@ -1,5 +1,5 @@
 'use strict';
-/** Descubrimiento en red local por difusion UDP, autenticado con la clave de empresa. */
+/** Descubrimiento en red local por difusion UDP, con la clave de red del programa. Es solo una pista: quien responde se comprueba al conectar. */
 const dgram = require('node:dgram');
 const os = require('node:os');
 const crypto = require('node:crypto');
@@ -38,9 +38,9 @@ function open(key, buf) {
 }
 
 class Discovery extends EventEmitter {
-  constructor({ companyKey, id, name, port, udpPort, silent = false }) {
+  constructor({ netKey, id, name, port, udpPort, silent = false }) {
     super();
-    Object.assign(this, { companyKey, id, name, port, udpPort, silent });
+    Object.assign(this, { netKey, id, name, port, udpPort, silent });
     this.peers = new Map();
   }
   start() {
@@ -61,7 +61,7 @@ class Discovery extends EventEmitter {
   }
   _message(buf, r) {
     let b = null;
-    if (buf.length < 1500) try { b = open(this.companyKey, buf); } catch { /* ajeno */ }
+    if (buf.length < 1500) try { b = open(this.netKey, buf); } catch { /* ajeno */ }
     if (!b || b.id === this.id || !/^\d{9}$/.test(b.id)) return;
     const port = Number(b.port);
     if (!Number.isInteger(port) || port < 1 || port > 65535) return;
@@ -80,7 +80,7 @@ class Discovery extends EventEmitter {
   }
   announce(bye) {
     if (!this.sock || this.silent) return; // quien no acepta conexiones no se anuncia
-    const msg = seal(this.companyKey, { id: this.id, name: this.name, port: this.port, at: Date.now(), bye });
+    const msg = seal(this.netKey, { id: this.id, name: this.name, port: this.port, at: Date.now(), bye });
     for (const addr of broadcasts()) { try { this.sock.send(msg, this.udpPort, addr, () => {}); } catch { /* socket cerrandose */ } }
   }
   stop() {

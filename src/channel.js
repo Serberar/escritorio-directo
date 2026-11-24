@@ -3,9 +3,9 @@
  * Canal cifrado directo entre dos equipos sobre un unico socket TCP.
  *
  *  - X25519 efimero: secreto perfecto hacia delante.
- *  - La clave de empresa entra en la derivacion (HKDF): quien no la tenga no
- *    puede completar el saludo ni descifrar nada.
- *  - Ed25519 por equipo: identidad estable de la que sale el ID de 9 digitos.
+ *  - Ed25519 por equipo: identidad estable de la que sale el ID de 9 digitos. El ID se calcula con scrypt
+ *    para que fabricar otra clave con el mismo ID cueste miles de horas de procesador.
+ *  - La clave de red separa unos programas de otros; es publica y no protege nada.
  *  - AES-256-GCM con contador por sentido.
  */
 const crypto = require('node:crypto');
@@ -41,11 +41,11 @@ function clearCryptoErrors() {
   return false;
 }
 function idFromPub(pub) {
-  const n = crypto.createHash('sha256').update('rd-id').update(pub).digest().readBigUInt64BE(0);
+  const n = crypto.scryptSync(pub, 'rd-id-2', 8, { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }).readBigUInt64BE(0);
   return String(100_000_000n + (n % 900_000_000n));
 }
-function deriveCompanyKey(text) {
-  return crypto.scryptSync(text.normalize('NFKC').trim(), 'remoto-oficina-empresa-v1', 32, { N: 16384, r: 8, p: 1 });
+function deriveNetKey(appId) {
+  return crypto.createHash('sha256').update('rd-red-2').update(String(appId)).digest();
 }
 
 class SecureChannel extends EventEmitter {
@@ -66,7 +66,7 @@ class SecureChannel extends EventEmitter {
     socket.on('data', (d) => { try { this._data(d); } catch (e) { this.destroy(e.message); } });
   }
 
-  /** Completa el saludo. opts: { role, identity, companyKey, name, expectId } */
+  /** Completa el saludo. opts: { role, identity, netKey, name, expectId, expectPub } */
   static handshake(socket, opts) {
     const ch = new SecureChannel(socket, opts);
     return new Promise((resolve, reject) => {
@@ -94,7 +94,7 @@ class SecureChannel extends EventEmitter {
       this.eph = null;
       const [c, s] = isClient ? [this.hello, buf] : [buf, this.hello];
       this.transcript = crypto.createHash('sha256').update(c).update(s).digest();
-      const okm = Buffer.from(crypto.hkdfSync('sha256', shared, this.opts.companyKey,
+      const okm = Buffer.from(crypto.hkdfSync('sha256', shared, this.opts.netKey,
         Buffer.concat([Buffer.from('rd01'), this.transcript]), 96));
       const c2s = okm.subarray(0, 32), s2c = okm.subarray(32, 64);
       this.binding = okm.subarray(64);
@@ -105,7 +105,7 @@ class SecureChannel extends EventEmitter {
       return;
     }
     let plain;
-    try { plain = this._decrypt(buf); } catch { throw new Error('wrong_company_key'); }
+    try { plain = this._decrypt(buf); } catch { throw new Error('bad_protocol'); }
     const m = JSON.parse(plain.toString('utf8'));
     const pub = Buffer.from(String(m.pub), 'base64');
     if (pub.length !== 32) throw new Error('bad_identity');
@@ -114,7 +114,8 @@ class SecureChannel extends EventEmitter {
     if (!ok) throw new Error('bad_identity');
     this.peer = { id: idFromPub(pub), pub: pub.toString('base64'), name: cleanName(m.name) };
     if (isClient) {
-      if (this.opts.expectId && this.opts.expectId !== this.peer.id) throw new Error('identity_mismatch');
+      const { expectId, expectPub } = this.opts;
+      if ((expectId && expectId !== this.peer.id) || (expectPub && expectPub !== this.peer.pub)) throw new Error('identity_mismatch');
       this._sendAuth();
     }
     this.ready = true;
@@ -209,4 +210,4 @@ function cleanName(s) {
   return String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '').trim().slice(0, 64) || 'Equipo';
 }
 
-module.exports = { SecureChannel, clearCryptoErrors, createIdentity, loadIdentity, idFromPub, deriveCompanyKey, cleanName, T_JSON, T_VIDEO, T_FILE };
+module.exports = { SecureChannel, clearCryptoErrors, createIdentity, loadIdentity, idFromPub, deriveNetKey, cleanName, T_JSON, T_VIDEO, T_FILE };

@@ -96,14 +96,14 @@ const T = {
     } finally { await V.kill(); H.a.process().kill(); }
   },
   async clavesMalas() {
-    const { SecureChannel, createIdentity, loadIdentity, deriveCompanyKey } = require('../src/channel');
+    const { SecureChannel, createIdentity, loadIdentity, deriveNetKey } = require('../src/channel');
     const H = await launch('h'), V = await launch('v');
     try {
       for (let i = 0; i < 12; i++) { // clave equivocada y, despues, tramas manipuladas
         const sock = net.connect(H.port, '127.0.0.1');
         sock.on('error', () => {});
         await new Promise((r) => sock.once('connect', r));
-        const p = SecureChannel.handshake(sock, { role: 'client', identity: loadIdentity(createIdentity()), companyKey: deriveCompanyKey(i % 2 ? 'otra-clave-cualquiera-1' : 'clave-auditoria-0123456789'), name: 'x' }).catch(() => null);
+        const p = SecureChannel.handshake(sock, { role: 'client', identity: loadIdentity(createIdentity()), netKey: deriveNetKey(i % 2 ? 'otra-clave-cualquiera-1' : 'clave-auditoria-0123456789'), name: 'x' }).catch(() => null);
         await wait(60);
         sock.write(Buffer.concat([Buffer.from([0, 0, 0, 60]), Buffer.alloc(60, i)]));
         await p;
