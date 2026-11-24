@@ -292,7 +292,7 @@ class ViewerSession extends EventEmitter {
     } catch (e) {
       // Se explica el fallo mas util: un problema de identidad antes que uno de red.
       const all = (e.errors || [e]).map((x) => x.message);
-      throw new Error(all.find((m) => ['bad_protocol', 'identity_mismatch', 'bad_identity'].includes(m)) || all.find((m) => m.startsWith('wan_')) || all[0]);
+      throw new Error(all.find((m) => ['bad_protocol', 'identity_mismatch', 'bad_identity'].includes(m)) || all.find((m) => m.startsWith('wan_')) || all[0], { cause: e });
     } finally { stop.abort(); }
   }
   start() {

@@ -1,5 +1,4 @@
 'use strict';
-/* global fmt, applyBrand */
 function fmt(id) { return String(id).replace(/(\d{3})(?=\d)/g, '$1 '); }
 function applyBrand(b) {
   if (!b || applyBrand.done) return;

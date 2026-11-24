@@ -207,7 +207,8 @@ class SecureChannel extends EventEmitter {
 }
 
 function cleanName(s) {
-  return String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩]/g, '').trim().slice(0, 64) || 'Equipo';
+  // eslint-disable-next-line no-control-regex -- se quitan a proposito
+  return String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim().slice(0, 64) || 'Equipo';
 }
 
 module.exports = { SecureChannel, clearCryptoErrors, createIdentity, loadIdentity, idFromPub, deriveNetKey, cleanName, T_JSON, T_VIDEO, T_FILE };

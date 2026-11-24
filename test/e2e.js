@@ -124,7 +124,7 @@ async function launch(name, port) {
     console.log('E2E COMPLETO');
   } catch (e) {
     if (process.env.DBG) {
-      for (const n of ['host', 'visor']) { try { console.log(n, fs.readFileSync(path.join(tmp, n, 'audit.jsonl'), 'utf8')); } catch {} }
+      for (const n of ['host', 'visor']) { try { console.log(n, fs.readFileSync(path.join(tmp, n, 'audit.jsonl'), 'utf8')); } catch { /* sin registro */ } }
       const pg = H.a.windows().find((w) => w.url().endsWith('panel.html')), vw = V.a.windows().find((w) => w.url().endsWith('viewer.html'));
       if (pg) console.log('panel', await pg.evaluate(() => JSON.stringify([...caps.values()].map((c) => ({ o: c.o, sent: c.sent, acked: c.acked, frames: c.frames, enc: c.enc?.state, w: c.w, h: c.h, conf: c.conf, last: !!c.last })))).catch(String));
       if (vw) console.log('viewer', await vw.evaluate(() => JSON.stringify({ live, conf, waitKey, dec: dec?.state, q: dec?.decodeQueueSize, frames, st: document.getElementById('status').textContent, w: canvas.width })).catch(String));

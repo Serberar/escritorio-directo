@@ -8,6 +8,7 @@ const { T_FILE } = require('./channel');
 const CHUNK = 64 * 1024, WINDOW = 2 * 1024 * 1024;
 
 function safeName(name) {
+// eslint-disable-next-line no-control-regex -- caracteres prohibidos en nombres de archivo
   let n = String(name ?? '').split(/[\\/]/).pop().replace(/[<>:"|?*\u0000-\u001f‪-‮⁦-⁩]/g, '_').replace(/[. ]+$/, '');
   if (!n || n === '.' || n === '..') n = 'archivo';
   if (/^(con|prn|aux|nul|com\d|lpt\d)(\.|$)/i.test(n)) n = '_' + n;

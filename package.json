@@ -11,15 +11,19 @@
     "dist": "electron-builder --win nsis --config electron-builder.config.js && node scripts/build-portable.js",
     "resilience": "node test/resilience.js",
     "internet": "node test/internet.js",
-    "por-id": "node test/por-id.js"
+    "por-id": "node test/por-id.js",
+    "lint": "eslint ."
   },
   "dependencies": {
     "hyperdht": "^6.37.0",
     "koffi": "^3.3.8"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "electron": "^45.4.1",
     "electron-builder": "^26.18.0",
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
     "playwright-core": "^1.65.1"
   },
   "author": "Sergio Bernabé",
