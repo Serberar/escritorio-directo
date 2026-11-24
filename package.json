@@ -1,5 +1,5 @@
 {
-  "name": "escritorio-directo",
+  "name": "escritorio-remoto",
   "version": "0.2.0",
   "description": "Escritorio remoto directo, sin servidor",
   "private": true,

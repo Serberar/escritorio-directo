@@ -1,4 +1,4 @@
-# Escritorio Directo
+# Escritorio Remoto
 
 Escritorio remoto para la red de una empresa. Conexión directa de equipo a equipo, cifrada de extremo a extremo, sin servidor ni cuentas.
 
@@ -25,7 +25,7 @@ Los nombres e IP de la captura son de ejemplo y el logo es un hueco para el de c
 | Administrador | No para abrirlo ni para conectarte a otros | Sí |
 | Firewall | Windows pregunta la primera vez que recibe conexiones; aceptar suele pedir administrador | Abre los puertos él solo |
 
-El portable se descomprime una vez en `%LOCALAPPDATA%\com.example.escritoriodirecto` (unos 10 s) y después abre al instante. Al cambiar de versión, Windows vuelve a preguntar por el firewall.
+El portable se descomprime una vez en `%LOCALAPPDATA%\com.example.escritorioremoto` (unos 10 s) y después abre al instante. Al cambiar de versión, Windows vuelve a preguntar por el firewall.
 Para permitirlo en muchos equipos, por GPO o como administrador: abrir TCP 47600 y UDP 47601 de entrada en redes privadas y de dominio.
 
 ## Cambiar la marca

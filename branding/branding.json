@@ -1,7 +1,7 @@
 {
-  "appName": "Escritorio Directo",
+  "appName": "Escritorio Remoto",
   "company": "Tu empresa",
-  "appId": "com.example.escritoriodirecto",
+  "appId": "com.example.escritorioremoto",
   "color": "#0f172a",
   "onColor": "#ffffff",
   "colorDark": "#38bdf8",
