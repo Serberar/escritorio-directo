@@ -2,6 +2,8 @@
 
 **Español** · [English](README.en.md)
 
+[![CI](https://github.com/Serberar/escritorio-remoto/actions/workflows/ci.yml/badge.svg)](https://github.com/Serberar/escritorio-remoto/actions/workflows/ci.yml) [![Versión](https://img.shields.io/github/v/release/Serberar/escritorio-remoto?label=versi%C3%B3n)](https://github.com/Serberar/escritorio-remoto/releases/latest)
+
 Escritorio remoto para Windows: escribes el ID de un equipo y te conectas, esté en tu red o en otra. Directo, cifrado de extremo a extremo y sin servidor ni cuentas.
 
 <picture>

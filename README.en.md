@@ -1,5 +1,9 @@
 # Escritorio Remoto
 
+[Español](README.md) · **English**
+
+[![CI](https://github.com/Serberar/escritorio-remoto/actions/workflows/ci.yml/badge.svg)](https://github.com/Serberar/escritorio-remoto/actions/workflows/ci.yml) [![Version](https://img.shields.io/github/v/release/Serberar/escritorio-remoto?label=version)](https://github.com/Serberar/escritorio-remoto/releases/latest)
+
 Remote desktop for Windows: type a computer's ID and connect, whether it is on your network or not. Direct, end-to-end encrypted, with no server and no accounts.
 
 <picture>
