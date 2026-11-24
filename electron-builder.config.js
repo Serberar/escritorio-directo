@@ -4,7 +4,7 @@ const test = process.env.BUILD_FOR_TEST === '1'; // sin endurecer, solo para pru
 module.exports = {
   appId: brand.appId,
   productName: brand.appName,
-  copyright: brand.company,
+  copyright: 'Copyright © 2026 Sergio Bernabé',
   npmRebuild: false,
   directories: { output: 'dist' },
   files: ['package.json', 'src/**', 'ui/**', 'branding/**'],

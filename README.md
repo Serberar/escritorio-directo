@@ -99,4 +99,8 @@ No abras el puerto en el router hacia internet: usa VPN.
 
 ## Licencia
 
-[MIT](LICENSE)
+[MIT](LICENSE), Copyright © 2026 Sergio Bernabé
+
+## Autor
+
+Diseñado y programado por Sergio Bernabé.
