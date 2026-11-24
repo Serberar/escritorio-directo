@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'">
+<link rel="stylesheet" href="style.css"><title></title></head>
+<body class="viewer">
+<header id="bar" hidden>
+  <select id="screens" aria-label="Pantalla"></select>
+  <select id="quality" aria-label="Calidad"><option value="sharp">Máxima nitidez</option><option value="balanced" selected>Equilibrado</option><option value="fast">Conexión lenta</option></select>
+  <select id="keys" aria-label="Enviar teclas"><option value="">Enviar teclas</option><option value="MetaLeft">Windows</option><option value="AltLeft+Tab">Alt+Tab</option><option value="AltLeft+F4">Alt+F4</option><option value="ControlLeft+ShiftLeft+Escape">Administrador de tareas</option><option value="MetaLeft+KeyD">Mostrar escritorio</option><option value="MetaLeft+KeyE">Explorador</option><option value="MetaLeft+KeyR">Ejecutar</option></select>
+  <button id="file">Enviar archivo</button><button id="folder">Recibidos</button><button id="chat">Chat</button>
+  <label class="chk"><input type="checkbox" id="viewonly"> Solo ver</label>
+  <span id="noctl" class="pill off" hidden>Sin permiso de control</span>
+  <span id="stats" class="muted"></span>
+  <button id="full">Pantalla completa</button><button id="end" class="danger">Desconectar</button>
+</header>
+<div id="body">
+  <div id="stage"><canvas id="screen" tabindex="0" width="0" height="0"></canvas>
+    <div id="overlay" class="center"><div class="card narrow"><img class="logo" alt=""><p id="status" role="status">Conectando...</p>
+      <form id="auth" hidden><input type="password" id="pw" placeholder="Contraseña del equipo" aria-label="Contraseña" autocomplete="off"><button class="primary">Entrar</button></form>
+      <button id="again" class="primary" hidden>Volver a conectar</button></div></div>
+    <div id="toast" role="status" hidden></div>
+  </div>
+  <aside id="side" hidden><div id="files"></div><div id="log" class="log"></div><form id="form" class="row"><input id="text" maxlength="2000" placeholder="Escribe un mensaje" aria-label="Mensaje"><button>Enviar</button></form></aside>
+</div>
+<script src="common.js"></script><script src="viewer.js"></script>
+</body></html>

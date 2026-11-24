@@ -1,0 +1,24 @@
+{
+  "name": "escritorio-directo",
+  "version": "0.2.0",
+  "description": "Escritorio remoto directo, sin servidor",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/core.test.js test/regression.test.js",
+    "e2e": "node test/e2e.js",
+    "dist": "electron-builder --win nsis --config electron-builder.config.js && node scripts/build-portable.js",
+    "resilience": "node test/resilience.js"
+  },
+  "dependencies": {
+    "koffi": "^3.3.8"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "playwright-core": "^1.65.1"
+  },
+  "author": "Sergio Bernabé",
+  "license": "MIT"
+}

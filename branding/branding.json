@@ -1,0 +1,13 @@
+{
+  "appName": "Escritorio Directo",
+  "company": "Tu empresa",
+  "appId": "com.example.escritoriodirecto",
+  "color": "#0f172a",
+  "onColor": "#ffffff",
+  "colorDark": "#38bdf8",
+  "onColorDark": "#06222a",
+  "logo": "logo.png",
+  "logoDark": "logo-dark.png",
+  "port": 47600,
+  "discoveryPort": 47601
+}
