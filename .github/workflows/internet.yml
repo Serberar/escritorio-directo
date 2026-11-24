@@ -1,9 +1,9 @@
 name: Prueba por internet
-# Dos máquinas en redes distintas se conectan solo con el ID. El equipo "host-pc" espera a uno de fuera de GitHub.
+# Dos máquinas en redes distintas se conectan solo con el ID.
 on:
   workflow_dispatch:
-  push:
-    branches: [prueba-internet]
+  schedule:
+    - cron: '0 6 * * 1'
 permissions:
   contents: read
 jobs:
@@ -17,13 +17,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts --omit=dev
-      - run: node test/internet.js ${{ github.job == 'visor' && 'visor' || 'host' }} ${{ github.job == 'host-pc' && 'pc' || 'ci' }}-${{ github.run_id }}
+      - run: node test/internet.js ${{ github.job == 'visor' && 'visor' || 'host' }} ci-${{ github.run_id }}
   visor:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
-    steps: *pasos
-  host-pc:
-    if: github.event_name == 'push'
-    runs-on: windows-latest
     timeout-minutes: 8
     steps: *pasos

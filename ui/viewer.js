@@ -56,7 +56,7 @@ function overlay(text, { auth, again } = {}) {
   $('auth').hidden = !auth;
   $('again').hidden = !again;
 }
-const DENIED = { bad_password: 'Contraseña incorrecta.', locked: 'Demasiados intentos. Espera 10 minutos.', approval_disabled: 'Este equipo solo admite contraseña.', password_disabled: 'Este equipo no tiene contraseña configurada.' };
+const DENIED = { bad_password: 'Contraseña incorrecta.', locked: 'Demasiados intentos. Espera 10 minutos.', busy: 'Ese equipo no admite más peticiones por ahora. Espera unos minutos.', approval_disabled: 'Este equipo solo admite contraseña.', password_disabled: 'Este equipo no tiene contraseña configurada.' };
 const on = {
   brand: (e) => applyBrand(e.brand),
   status: (e) => overlay(e.text),

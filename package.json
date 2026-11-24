@@ -1,7 +1,7 @@
 {
   "name": "escritorio-remoto",
   "version": "0.3.0",
-  "description": "Escritorio remoto directo, sin servidor",
+  "description": "Escritorio remoto por ID, directo y sin servidor",
   "private": true,
   "main": "src/main.js",
   "scripts": {
@@ -10,7 +10,8 @@
     "e2e": "node test/e2e.js",
     "dist": "electron-builder --win nsis --config electron-builder.config.js && node scripts/build-portable.js",
     "resilience": "node test/resilience.js",
-    "internet": "node test/internet.js"
+    "internet": "node test/internet.js",
+    "por-id": "node test/por-id.js"
   },
   "dependencies": {
     "hyperdht": "^6.37.0",

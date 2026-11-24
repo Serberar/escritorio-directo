@@ -7,7 +7,9 @@ module.exports = {
   copyright: 'Copyright © 2026 Sergio Bernabé',
   npmRebuild: false,
   directories: { output: 'dist' },
-  files: ['package.json', 'src/**', 'ui/**', 'branding/**'],
+  files: ['package.json', 'src/**', 'ui/**', 'branding/**',
+    '!**/node_modules/*/prebuilds/{android,darwin,ios,linux}*{,/**}', '!**/node_modules/*/prebuilds/win32-arm64{,/**}'],
+  asarUnpack: ['**/*.node'],
   win: { target: [{ target: 'nsis', arch: ['x64'] }], icon: 'branding/icon.png' },
   nsis: {
     oneClick: false, perMachine: true, allowToChangeInstallationDirectory: true, include: 'scripts/installer.nsh',

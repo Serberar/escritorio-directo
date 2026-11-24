@@ -7,7 +7,6 @@ const { _electron } = require('playwright-core');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const root = path.join(__dirname, '..');
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'rd-e2e-'));
-const KEY = 'clave-e2e-0123456789';
 const shots = process.env.SHOTS;
 const step = (s) => console.log('ok  ' + s);
 async function until(fn, what, ms = 15000) {
@@ -24,9 +23,7 @@ async function launch(name, port) {
   a.on('window', (w) => { w.on('crash', () => console.log(name, 'CRASH', w.url())); w.on('pageerror', (e) => console.log(name, 'PAGEERR', e.message)); w.on('console', (m) => process.env.DBG && console.log(name, m.type(), m.text())); });
   const page = (f) => until(() => a.windows().find((w) => w.url().endsWith(f)), name + ' ' + f);
   const home = await page('home.html');
-  await home.fill('#key', KEY);
-  await home.click('#sform .primary');
-  await home.waitForSelector('#app:not([hidden])');
+  await home.waitForFunction(() => document.getElementById('myid').textContent.length > 8);
   return { a, page, home };
 }
 (async () => {

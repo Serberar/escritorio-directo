@@ -1,6 +1,6 @@
 # Escritorio Remoto
 
-Escritorio remoto para la red de una empresa. Conexión directa de equipo a equipo, cifrada de extremo a extremo, sin servidor ni cuentas.
+Escritorio remoto para Windows: escribes el ID de un equipo y te conectas, esté en tu red o en otra. Directo, cifrado de extremo a extremo y sin servidor ni cuentas.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/inicio-oscuro.png">
@@ -10,12 +10,12 @@ Escritorio remoto para la red de una empresa. Conexión directa de equipo a equi
 **Lo interesante por dentro**
 
 - Protocolo propio sobre TCP: X25519 + AES-256-GCM, claves nuevas en cada conexión ([src/channel.js](src/channel.js)).
-- Descubrimiento de equipos por UDP, sin servidor central ([src/discovery.js](src/discovery.js)).
+- Conexión por ID entre redes distintas con UDP hole punching, sin abrir puertos ([src/wan.js](src/wan.js)), y descubrimiento por UDP en la red local ([src/discovery.js](src/discovery.js)).
 - Ratón y teclado con la API de Windows mediante FFI, sin módulos nativos que compilar ([src/input-win.js](src/input-win.js)).
 - Electron endurecido: CSP sin orígenes externos, canales IPC por ventana y fuses.
-- Una sola dependencia en ejecución. 31 pruebas, más pruebas de extremo a extremo y de resiliencia.
+- Dos dependencias directas en ejecución. 41 pruebas, más pruebas con el programa completo, de resiliencia y [entre dos redes reales](.github/workflows/internet.yml).
 
-Los nombres e IP de la captura son de ejemplo y el logo es un hueco para el de cada empresa.
+Los nombres e IP de la captura son de ejemplo.
 
 ## Qué archivo usar
 
@@ -30,7 +30,7 @@ Para permitirlo en muchos equipos, por GPO o como administrador: abrir TCP 47600
 
 ## Cambiar la marca
 
-Está en `branding/`: `branding.json` (nombre y colores claro/oscuro), `logo.png`, `logo-dark.png` e `icon.png` (512 x 512). El logo incluido es un hueco: pon el de tu empresa.
+Está en `branding/`: `branding.json` (nombre y colores claro/oscuro) e `icon.png` (512 x 512).
 No cambies `appId` ni `appName` una vez repartido: equivaldría a otro programa.
 Si cambias los puertos en el JSON, cámbialos también en `scripts/installer.nsh`.
 
@@ -47,31 +47,37 @@ Salen en `dist/` el instalador y el portable. No están firmados: Windows SmartS
 
 ## Poner en marcha
 
-1. Ábrelo en el primer equipo y pulsa "Generar clave nueva". Guárdala como una contraseña maestra.
-2. Ábrelo en los demás y pega la misma clave. Los equipos de la misma red aparecen solos.
-3. En los equipos a los que quieras entrar sin que nadie acepte: Ajustes > Acceso sin supervisión, y "Iniciar con Windows".
+1. Ábrelo en los dos equipos. No hay cuentas ni claves que repartir: cada equipo enseña su **ID de 9 cifras**.
+2. Escribe el ID del otro y pulsa Conectar. Da igual que esté en la misma oficina, en otra o en casa.
+3. En el otro equipo, alguien acepta en pantalla. Para entrar sin que haya nadie: Ajustes > Acceso sin supervisión, y "Iniciar con Windows".
 
-## Redes
+Los equipos de la misma red aparecen solos en la lista, y los demás se quedan guardados tras la primera conexión.
 
-| Situación | Qué hacer |
-| --- | --- |
-| Misma red | Nada. Aparecen solos |
-| Otra VLAN o sede con ruta | Escribir la IP la primera vez; luego queda guardado |
-| Desde casa | VPN (por ejemplo WireGuard o Tailscale) y escribir la IP de la VPN |
+## Cómo se encuentran por internet
 
-Puertos: TCP 47600 (sesión) y UDP 47601 (descubrimiento). El instalador los abre solo en redes privadas o de dominio. Si la red o la VPN figura como pública en Windows, cámbiala a privada.
-No abras el puerto en el router hacia internet: usa VPN.
+```mermaid
+flowchart LR
+  A[Equipo A] -- "¿dónde está el ID?" --> D((Red distribuida<br/>HyperDHT))
+  B[Equipo B] -- publica su ID --> D
+  A <== "directo y cifrado (UDP hole punching)" ==> B
+```
+
+- Primero se prueba la red local y, a la vez, internet. Gana la vía que antes responda.
+- No hay que abrir puertos ni tener servidor: los dos routers se abren paso con ayuda de [HyperDHT](https://github.com/holepunchto/hyperdht), una red pública. Por ella solo pasa la presentación; la sesión va directa entre los dos equipos.
+- **Cuándo no se puede:** si una red bloquea UDP, o si las dos usan un NAT que cambia de puerto en cada conexión (algunas redes móviles y de empresa). El programa lo dice; en ese caso, usa otra red o una VPN.
+- Se puede desactivar en Ajustes y dejarlo solo en red local. También se puede escribir una dirección IP.
+
+Puertos en red local: TCP 47600 (sesión) y UDP 47601 (descubrimiento). El instalador los abre en redes privadas o de dominio. No abras ninguno en el router.
 
 ## Seguridad
 
-- Cifrado extremo a extremo: X25519 + AES-256-GCM, con claves nuevas en cada conexión.
-- Sin la clave de empresa no se completa la conexión. Además hace falta aceptación en pantalla o la contraseña del equipo.
-- El ID sale de la clave propia del equipo. Conectando por ID se comprueba que responde ese equipo.
-- Máximo de intentos de contraseña: 5 por equipo y 20 en total cada 10 minutos.
+- Cifrado extremo a extremo: X25519 + AES-256-GCM, con claves nuevas en cada conexión. La red distribuida no ve nada de la sesión.
+- Quien sepa tu ID puede **pedir** acceso. Para entrar hace falta que alguien acepte en pantalla o la contraseña del equipo.
+- El ID sale de la clave propia del equipo con una función lenta (scrypt): fabricar otra clave con tu mismo ID cuesta miles de horas de procesador. Tras la primera conexión se guarda la clave completa y, si cambia, se rechaza.
+- Contraseña: 5 intentos por equipo y 20 en total cada 10 minutos; las fáciles no se admiten. Peticiones en pantalla: tras 3 rechazos se ignora a ese equipo 30 minutos, y hay un tope total.
 - Durante la sesión el equipo controlado muestra quién está conectado y puede cortar o quitar permisos. Si esa ventana se cae o se cuelga, la sesión se corta sola (como mucho en unos 12 s).
 - Los secretos se guardan cifrados con la cuenta de Windows. Cada equipo lleva su registro local, con tope de tamaño.
-- Entra por ID siempre que puedas: comprueba la identidad del equipo. Entrando por IP con contraseña, alguien de la empresa que suplantara esa IP podría intentar adivinarla sin conexión.
-- Si un empleado se va o se pierde un equipo, cambia la clave de empresa en todos.
+- Entrando por IP no se comprueba el ID: hazlo solo en redes de confianza.
 - El protocolo es propio y no ha pasado una auditoría externa.
 
 ## Límites de esta versión
@@ -86,7 +92,8 @@ No abras el puerto en el router hacia internet: usa VPN.
 
 - "Registro" > "Abrir carpeta de registros": `audit.jsonl` (quién se conectó) y `app.log` (errores del programa).
 - Configuración dañada: se recupera sola de la copia; la dañada queda como `config.danada-...json`.
-- "Windows no pudo abrir las claves": vuelve a poner la clave de empresa y la contraseña. El ID del equipo cambia.
+- "Windows no pudo abrir las claves": vuelve a poner la contraseña. El ID del equipo cambia.
+- "Sin conexión por internet": no hay internet o la red bloquea UDP. En la red local sigue funcionando.
 - Error grave: se apunta, se cortan las sesiones y el programa se reinicia solo (una vez por minuto como mucho).
 - Un equipo sale con "tiene mal la fecha u hora": corrígela en ese equipo.
 - Con dos usuarios de Windows abiertos a la vez en un PC, solo el primero recibe conexiones.
@@ -95,6 +102,8 @@ No abras el puerto en el router hacia internet: usa VPN.
 
 - `npm test`: núcleo y regresiones.
 - `npm run e2e`: dos copias reales en este equipo; mueve el ratón un instante.
+- `npm run por-id`: dos copias que no se ven en la red local se conectan por internet.
+- `npm run internet -- host <sala>` y `npm run internet -- visor <sala>`: entre dos equipos de redes distintas.
 - `npm run resilience`: provoca caídas, cuelgues, configuración dañada, red lenta, etc.
 
 ## Licencia

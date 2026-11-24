@@ -17,9 +17,7 @@ async function launch(name) {
   const a = await _electron.launch({ executablePath: electron, args: [root], cwd: root, env: envFor(prof, port) });
   const page = (f) => until(() => a.windows().find((w) => w.url().endsWith(f)), name + ' ' + f);
   const home = await page('home.html');
-  await home.fill('#key', 'clave-auditoria-0123456789');
-  await home.click('#sform .primary');
-  await home.waitForSelector('#app:not([hidden])');
+  await home.waitForFunction(() => document.getElementById('myid').textContent.length > 8);
   return { a, page, home, port, prof, kill: () => a.evaluate(({ app }) => app.exit(0)).catch(() => {}) };
 }
 const crash = (A, f) => A.a.evaluate(({ BrowserWindow }, f) => BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().endsWith(f)).webContents.forcefullyCrashRenderer(), f);
@@ -103,7 +101,7 @@ const T = {
         const sock = net.connect(H.port, '127.0.0.1');
         sock.on('error', () => {});
         await new Promise((r) => sock.once('connect', r));
-        const p = SecureChannel.handshake(sock, { role: 'client', identity: loadIdentity(createIdentity()), netKey: deriveNetKey(i % 2 ? 'otra-clave-cualquiera-1' : 'clave-auditoria-0123456789'), name: 'x' }).catch(() => null);
+        const p = SecureChannel.handshake(sock, { role: 'client', identity: loadIdentity(createIdentity()), netKey: deriveNetKey(i % 2 ? 'otro-programa' : require('../branding/branding.json').appId), name: 'x' }).catch(() => null);
         await wait(60);
         sock.write(Buffer.concat([Buffer.from([0, 0, 0, 60]), Buffer.alloc(60, i)]));
         await p;
@@ -194,7 +192,7 @@ const T = {
     const go = async () => {
       const a = await _electron.launch({ executablePath: electron, args: [root], cwd: root, env: envFor(H.prof, H.port) });
       const w = await until(() => a.windows().find((x) => x.url().endsWith('home.html')), 'home');
-      await until(() => w.evaluate(() => st !== null), 'estado');
+      await until(() => w.evaluate(() => typeof st !== 'undefined' && st !== null), 'estado');
       return { w, end: async () => { await a.evaluate(({ app }) => app.exit(0)).catch(() => {}); await wait(1500); } };
     };
     fs.writeFileSync(file, '{"settings":{"na');
@@ -206,9 +204,9 @@ const T = {
     for (const k of Object.keys(c.secrets)) c.secrets[k] = Buffer.from('v10basura-que-no-se-puede-abrir').toString('base64');
     fs.writeFileSync(file, JSON.stringify(c));
     r = await go();
-    const setup = await r.w.isVisible('#sform'), m2 = await r.w.textContent('#sproblem');
+    const m2 = await r.w.textContent('#problem');
     await r.end();
-    out('arranque con claves que Windows no abre', !setup || !/Windows no pudo/.test(m2), `pide la clave=${setup}, aviso: ${m2.slice(0, 55)}...`);
+    out('arranque con claves que Windows no abre', !/Windows no pudo/.test(m2), `aviso: ${m2.slice(0, 55)}...`);
   },
   async errorGrave() {
     const H = await launch('h');

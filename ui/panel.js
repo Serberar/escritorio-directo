@@ -164,8 +164,8 @@ function permBoxes(perms, onChange) {
 function askCard(s) {
   const perms = { control: true, clipboard: true, files: true };
   return el('section', { className: 'card' },
-    el('h2', { textContent: s.name }), el('p', { className: 'muted', textContent: `ID ${fmt(s.id)} · ${s.ip.replace('::ffff:', '')}` }),
-    el('p', { textContent: 'Quiere ver y controlar este equipo.' }),
+    el('h2', { textContent: s.name }), el('p', { className: 'muted', textContent: `ID ${fmt(s.id)} · ${s.internet ? 'por internet · ' : ''}${(s.ip || '').replace('::ffff:', '')}` }),
+    el('p', { textContent: 'Quiere ver y controlar este equipo. Acepta solo si lo esperabas: el nombre lo elige quien llama, el ID no se puede imitar.' }),
     permBoxes(perms, (k, v) => { perms[k] = v; }),
     el('div', { className: 'row' },
       el('button', { className: 'primary', id: 'accept', textContent: 'Aceptar', onclick: () => api.send('panel:decide', s.sid, perms) }),

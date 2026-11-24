@@ -19,6 +19,7 @@ app.setAppUserModelId(brand.appId);
 const PORT = (dev && Number(process.env.RD_PORT)) || brand.port || 47600;
 const UDP = (dev && Number(process.env.RD_UDP)) || brand.discoveryPort || 47601;
 
+let livePort = PORT;
 let cfg, identity, injector, server, discovery, wan, home, panel, tray;
 let quitting = false, screens = [], lastClip = '', panelKey = '', panelReady = false, panelBeat = 0, netChain = Promise.resolve();
 const problems = new Map(); // origen -> texto
@@ -209,11 +210,15 @@ async function applyNetwork() {
     const srv = new HostServer({ identity, netKey, name, deps: hostDeps() });
     srv.on('session', onHostSession);
     srv.on('change', pushPanel);
-    try { await srv.listen(PORT); server = srv; } catch (e) {
-      problems.set('net', e.code === 'EADDRINUSE' ? `El puerto ${PORT} está ocupado por otro programa o por otro usuario de Windows con este programa abierto. Este equipo no recibe conexiones.` : 'No se puede escuchar: ' + e.code);
+    // Con el puerto ocupado (otro usuario de Windows, otro programa) vale cualquier otro: se anuncia el que sea.
+    for (const p of [PORT, 0]) {
+      try { livePort = await srv.listen(p); server = srv; break; } catch (e) {
+        if (e.code !== 'EADDRINUSE') { problems.set('net', 'No se puede escuchar en la red local: ' + e.code); break; }
+      }
     }
+    server ??= srv; // sin red local sigue recibiendo por internet
   }
-  discovery = new Discovery({ netKey, id: identity.id, name, port: PORT, udpPort: UDP, silent: !server });
+  discovery = new Discovery({ netKey, id: identity.id, name, port: livePort, udpPort: UDP, silent: !server });
   discovery.on('change', pushHome);
   discovery.on('problem', (c) => { problems.set('disc', `El descubrimiento en red no funciona (${c}). Puedes conectar por IP.`); pushHome(); });
   discovery.start();
@@ -458,7 +463,7 @@ function homeState() {
   for (const p of discovery?.peers.values() ?? []) peers.set(p.id, { ...peers.get(p.id), id: p.id, name: cfg.data.contacts[p.id]?.alias || p.name, host: p.host, online: true, skew: p.skew });
   const ips = Object.values(os.networkInterfaces()).flat().filter((i) => i.family === 'IPv4' && !i.internal).map((i) => i.address);
   return {
-    brand, version: app.getVersion(), id: identity.id, ips, port: PORT, problem: [...problems.values()].join(' ') || null,
+    brand, version: app.getVersion(), id: identity.id, ips, port: livePort, problem: [...problems.values()].join(' ') || null,
     settings: cfg.data.settings, hasPassword: !!cfg.getSecret('password'), listening: !!server, internet: wan ? wan.state : 'off',
     peers: [...peers.values()].sort((a, b) => b.online - a.online || a.name.localeCompare(b.name)), audit: cfg.readAudit(60),
   };
