@@ -2,8 +2,6 @@
 
 **Español** · [English](README.en.md)
 
-[![CI](https://github.com/Serberar/escritorio-remoto/actions/workflows/ci.yml/badge.svg)](https://github.com/Serberar/escritorio-remoto/actions/workflows/ci.yml) [![Versión](https://img.shields.io/github/v/release/Serberar/escritorio-remoto?label=versi%C3%B3n)](https://github.com/Serberar/escritorio-remoto/releases/latest)
-
 Escritorio remoto para Windows: escribes el ID de un equipo y te conectas, esté en tu red o en otra. Directo, cifrado de extremo a extremo y sin servidor ni cuentas.
 
 <picture>
@@ -67,7 +65,7 @@ flowchart LR
 ```
 
 - Primero se prueba la red local y, a la vez, internet. Gana la vía que antes responda.
-- No hay que abrir puertos ni tener servidor: los dos routers se abren paso con ayuda de [HyperDHT](https://github.com/holepunchto/hyperdht), una red pública. Por ella solo pasa la presentación; la sesión va directa entre los dos equipos.
+- No hay que abrir puertos ni tener servidor: los dos routers se abren paso con ayuda de HyperDHT, una red pública. Por ella solo pasa la presentación; la sesión va directa entre los dos equipos.
 - **Cuándo no se puede:** si una red bloquea UDP, o si las dos usan un NAT que cambia de puerto en cada conexión (algunas redes móviles y de empresa). El programa lo dice; en ese caso, usa otra red o una VPN.
 - Se puede desactivar en Ajustes y dejarlo solo en red local. También se puede escribir una dirección IP.
 
